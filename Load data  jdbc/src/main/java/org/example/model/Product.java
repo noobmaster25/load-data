@@ -16,8 +16,8 @@ public class Product {
 
     }
 
-    public Product(Long product_id, String brand, BigDecimal price, Long category_id) {
-        this.productId = product_id;
+    public Product(Long productId, String brand, BigDecimal price, Long category_id) {
+        this.productId = productId;
         this.brand = brand;
         this.price = price;
         this.categoryId = category_id;
@@ -67,5 +67,15 @@ public class Product {
     @Override
     public int hashCode() {
         return Objects.hash(productId);
+    }
+
+    @Override
+    public String toString() {
+        return "Product{" +
+                "productId=" + productId +
+                ", brand='" + brand + '\'' +
+                ", price=" + price +
+                ", categoryId=" + categoryId +
+                '}';
     }
 }

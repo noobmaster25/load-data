@@ -1,16 +1,21 @@
 package org.example;
 
 
-public class Main {
-    public static void main(String[] args) {
-        String path = "/home/luigi/Descargas/2019-Oct.csv";
-        String delimiter = ",";
+import java.io.IOException;
 
-        Long initialTime = System.currentTimeMillis();
+public class Main {
+    public static void main(String[] args) throws IOException {
         LoadDataBase loadDataBase = new LoadDataBase();
+
+        String path = "/home/luigi/Descargas/data.csv";
+        String delimiter = ",";
+        Long initialTime = System.currentTimeMillis();
+
+
         loadDataBase.loadData(path,delimiter);
         Long endTime = System.currentTimeMillis();
-        System.out.println((endTime - initialTime)/1000);
+
+        System.out.println("Segundos: "+(endTime - initialTime)/1000);
 
 
     }

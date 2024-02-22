@@ -4,180 +4,131 @@ import org.example.model.Category;
 import org.example.model.Event;
 import org.example.model.Product;
 import org.example.model.User;
-import org.example.repository.DataBaseConexion;
+import org.example.repository.ICrudRepository;
+import org.example.repository.impl.CategoryRepositoryImpl;
+import org.example.repository.impl.EventRepositoryImpl;
+import org.example.repository.impl.ProductRepositoryImpl;
+import org.example.repository.impl.UserRepositoryImpl;
 import org.example.util.DateTimeUtil;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.time.LocalDateTime;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class LoadDataBase {
+    private ICrudRepository productRepository;
+    private ICrudRepository categoryRepository;
+    private ICrudRepository userRepository;
+    private ICrudRepository eventRepository;
 
-    private final String insertCategory = "INSERT INTO category VALUES(?,?)";
-    private final String insertProduct = "INSERT INTO product VALUES(?,?,?,?)";
-    private final String insertUser = "INSERT INTO user VALUES(?,?)";
-    private final String insertEvent = "INSERT INTO event VALUES(?,?,?,?)";
-
-    private final int limitInsertion = 6000;
-    private final Long dataLength = 60000L;
-
-    public void loadData(String path, String delimiter){
-
+    public LoadDataBase(){
+        productRepository = new ProductRepositoryImpl();
+        categoryRepository = new CategoryRepositoryImpl();
+        userRepository = new UserRepositoryImpl();
+        eventRepository = new EventRepositoryImpl();
+    }
+    public void loadData(String path, String delimiter) throws IOException {
         try(BufferedReader br = new BufferedReader(new FileReader(path))) {
+            Set<Product> setProducts = new HashSet<>();
+            Set<Category> setCategory = new HashSet<>();
+            Set<User> setUser = new HashSet<>();
+            Set<Event> setEvent = new HashSet<>();
+
             br.readLine();
-            for (Long i = dataLength; i <= 0 ; i--) {
-                Set<Category> setCategory = new HashSet<>();
-                Set<Product> setProduct = new HashSet<>();
-                Set<User> setUser = new HashSet<>();
-                Set<Event> setEvent = new HashSet<>();
+            int countRead = 0;
+            while(br.readLine()!= null){
+                String[] rows = br.readLine().split(delimiter);
 
-                int contador = 0;
-                while(contador != limitInsertion) {
-                    String[] params = br.readLine().split(delimiter);
+                setProducts.add(this.buildProductWithParams(rows));
+                setCategory.add(this.buildCategoryWithParams(rows));
+                setUser.add(this.buildUserWithParams(rows));
+                setEvent.add(this.buildEventWithParams(rows));
+                countRead++;
 
-                    LocalDateTime eventTime = DateTimeUtil.dateTimeFormat(params[0]);
-                    String eventType = params[1];
-                    Long productId = Long.parseLong(params[2]);
-                    Long categoryId = Long.parseLong(params[3]);
-                    String categoryCode = params[4];
-                    String brand = params[5];
-                    BigDecimal price = BigDecimal.valueOf(Double.parseDouble(params[6]));
-                    Long userId = Long.parseLong(params[7]);
-                    String userSession = params[8];
+                if (countRead == 5000) {
+                    Set<Category> categoriesUniques= categoryRepository.findAllByIdIn(new ArrayList<>(setCategory.stream().map(Category::getCategoryId).collect(Collectors.toList())));
+                    setCategory.removeAll(categoriesUniques);
+                    Set<Product> productsUniques = productRepository.findAllByIdIn(new ArrayList<>(setProducts.stream().map(Product::getProductId).collect(Collectors.toList())));
+                    setProducts.removeAll(productsUniques);
+                    Set<User> usersUniques = userRepository.findAllByIdIn(new ArrayList<>(setUser.stream().map(User::getUserId).collect(Collectors.toList())));
+                    setUser.removeAll(usersUniques);
 
-                    setCategory.add(new Category(categoryId,categoryCode));
-                    setProduct.add(new Product(productId,brand, price, categoryId));
-                    setUser.add(new User(userId, userSession));
-                    setEvent.add(new Event(eventType, eventTime,userId,productId));
+                    categoryRepository.saveAll(setCategory);
+                    productRepository.saveAll(setProducts);
+                    userRepository.saveAll(setUser);
+                    eventRepository.saveAll(setEvent);
 
-
-                    contador++;
-                    if (contador == limitInsertion){
-                        insertCategories(setCategory);
-                        insertProducts(setProduct);
-                        insertUsers(setUser);
-                        insertEvent(setEvent);
+                    setProducts.clear();
+                    setCategory.clear();
+                    setUser.clear();
+                    setEvent.clear();
+                    categoriesUniques.clear();
+                    productsUniques.clear();
+                    usersUniques.clear();
+                    countRead = 0;
+                    System.out.println("llego a 5000");
                     }
-                }
-                setCategory.clear();
-                setProduct.clear();
-                setEvent.clear();
-                setUser.clear();
-            }
 
+            }
+            if(setCategory.size()>0){
+                Set<Category> categoriesUniques= categoryRepository.findAllByIdIn(new ArrayList<>(setCategory.stream().map(Category::getCategoryId).collect(Collectors.toList())));
+                setCategory.removeAll(categoriesUniques);
+                categoryRepository.saveAll(setCategory);
+                setCategory.clear();
+                categoriesUniques.clear();
+            }
+            if (setProducts.size()>0){
+                Set<Product> productsUniques = productRepository.findAllByIdIn(new ArrayList<>(setProducts.stream().map(Product::getProductId).collect(Collectors.toList())));
+                setProducts.removeAll(productsUniques);
+                productRepository.saveAll(setProducts);
+                setProducts.clear();
+                productsUniques.clear();
+
+            }
+            if(setUser.size()>0){
+                Set<User> usersUniques = userRepository.findAllByIdIn(new ArrayList<>(setUser.stream().map(User::getUserId).collect(Collectors.toList())));
+                setUser.removeAll(usersUniques);
+                userRepository.saveAll(setUser);
+                setUser.clear();
+                usersUniques.clear();
+            }
+            if(setEvent.size()>0){
+                eventRepository.saveAll(setEvent);
+                setEvent.clear();
+            }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-
     }
-    public void insertProducts(Set<Product> setProduct)  {
-      Connection con = DataBaseConexion.getConnection();
-
-        try(PreparedStatement p = con.prepareStatement(insertProduct)) {
-            con.setAutoCommit(false);
-            //false -> deshabilito transactions individuales, para realiza una sola transaction cada 6000
-            setProduct.forEach(producto -> {
-                try {
-                    p.setLong(1,producto.getProductId());
-                    p.setString(2,producto.getBrand());
-                    p.setBigDecimal(3,producto.getPrice());
-                    p.setLong(4,producto.getCategoryId());
-                    p.executeUpdate();
-
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            //confirmo la transaccion
-            con.commit();
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-      DataBaseConexion.closeConnection(con);
+    private Category buildCategoryWithParams(String[]rows){
+        Long categoryId = Long.parseLong(rows[3]);
+        String categoryCode = rows[4];
+        return new Category(categoryId,categoryCode);
     }
-    private void insertCategories(Set<Category> setCategory){
-        Connection con = DataBaseConexion.getConnection();
-
-        try(PreparedStatement p = con.prepareStatement(insertCategory)){
-            con.setAutoCommit(false);
-            setCategory.forEach(category->{
-                try{
-                    p.setLong(1,category.getCategoryId());
-                    p.setString(2,category.getCategoryCode());
-                    p.executeUpdate();
-                }catch (SQLException e){
-                    e.printStackTrace();
-                }
-
-            });
-            con.commit();
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        DataBaseConexion.closeConnection(con);
+    private Product buildProductWithParams(String[]rows){
+        Long productId = Long.parseLong(rows[2]);
+        String band = rows[5];
+        BigDecimal price = BigDecimal.valueOf(Double.parseDouble(rows[6]));
+        Long categoryId = Long.parseLong(rows[3]);
+        return new Product(productId,band,price,categoryId);
     }
-
-    public void insertUsers(Set<User> setUsers)  {
-        Connection con = DataBaseConexion.getConnection();
-
-        try(PreparedStatement p = con.prepareStatement(insertUser)) {
-            con.setAutoCommit(false);
-            setUsers.forEach(user -> {
-                try {
-                    p.setLong(1,user.getUserId());
-                    p.setString(2,user.getUserSession());
-                    p.executeUpdate();
-
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            con.commit();
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        DataBaseConexion.closeConnection(con);
+    private User buildUserWithParams(String[]rows){
+        Long userId = Long.parseLong(rows[7]);
+        String userSession = rows[8];
+        return new User(userId,userSession);
     }
-
-    public void insertEvent(Set<Event> setEvent)  {
-
-        Connection con = DataBaseConexion.getConnection();
-
-        try(PreparedStatement p = con.prepareStatement(insertEvent)) {
-            con.setAutoCommit(false);
-            setEvent.forEach(event -> {
-                try {
-                    p.setString(1,event.getEventType());
-                    p.setObject(2,event.getEventTime());
-                    p.setLong(3, event.getUserId());
-                    p.setLong(4, event.getProductId());
-                    p.executeUpdate();
-
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            con.commit();
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        DataBaseConexion.closeConnection(con);
+    private Event buildEventWithParams(String[]rows){
+        LocalDateTime eventTime = DateTimeUtil.dateTimeFormat(rows[0]);
+        String eventType = rows[1];
+        Long userId = Long.parseLong(rows[7]);
+        Long productId = Long.parseLong(rows[2]);
+        return new Event(eventType,eventTime,userId,productId);
     }
-
-
-
 }
 
 
